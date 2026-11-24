@@ -1,0 +1,77 @@
+---
+apiVersion: tekton.dev/v1
+kind: TriggerBinding
+metadata:
+  name: nginx-demo-push-binding
+  namespace: default
+spec:
+  params:
+    - name: git-revision
+      value: $(body.ref)
+    - name: git-url
+      value: $(body.repository.clone_url)
+    - name: image
+      value: hub.podcc.com/test/nginx:$(body.after)
+
+---
+apiVersion: tekton.dev/v1
+kind: TriggerTemplate
+metadata:
+  name: nginx-demo-push-template
+  namespace: default
+spec:
+  params:
+    - name: git-revision
+      description: refs/heads/main
+    - name: git-url
+      description: repo url
+    - name: image
+      description: target image
+  resourcetemplates:
+    - apiVersion: tekton.dev/v1
+      kind: PipelineRun
+      metadata:
+        generateName: nginx-demo-push-
+        namespace: default
+      spec:
+        pipelineRef:
+          name: nginx-demo-pipeline
+        taskRunTemplate:
+          serviceAccountName: pipeline
+        params:
+          - name: git-url
+            value: $(tt.params.git-url)
+          - name: git-revision
+            value: $(tt.params.git-revision)
+          - name: image
+            value: $(tt.params.image)
+          - name: git-token
+            valueFrom:
+              secretKeyRef:
+                name: git-credentials
+                key: token
+                optional: true
+        workspaces:
+          - name: source
+            volumeClaimTemplate:
+              spec:
+                accessModes:
+                  - ReadWriteOnce
+                resources:
+                  requests:
+                    storage: 5Gi
+
+---
+apiVersion: tekton.dev/v1
+kind: EventListener
+metadata:
+  name: nginx-demo-webhook
+  namespace: default
+spec:
+  serviceAccountName: pipeline
+  triggers:
+    - name: github-push
+      bindings:
+        - ref: nginx-demo-push-binding
+      template:
+        ref: nginx-demo-push-template

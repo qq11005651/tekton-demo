@@ -1,0 +1,25 @@
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: nginx-demo-app
+  namespace: argocd
+  labels:
+    app.kubernetes.io/managed-by: platform
+    gitops-app: nginx-demo
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/qq11005651/tekton-demo.git
+    path: k8s
+    targetRevision: master
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: default
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+      allowEmpty: true
+    syncOptions:
+      - CreateNamespace=true

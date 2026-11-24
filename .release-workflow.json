@@ -1,0 +1,10 @@
+{
+  "appName": "nginx-demo",
+  "namespace": "default",
+  "gitUrl": "https://github.com/qq11005651/tekton-demo.git",
+  "gitRevision": "master",
+  "image": "hub.podcc.com/test/nginx:1.15.2",
+  "strategy": "canary",
+  "host": "nginx-demo.demo.local",
+  "generatedAt": "2026-11-24T14:37:14.350Z"
+}

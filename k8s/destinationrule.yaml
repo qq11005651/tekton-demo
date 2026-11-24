@@ -1,0 +1,13 @@
+---
+apiVersion: networking.istio.io/v1beta1
+kind: DestinationRule
+metadata:
+  name: nginx-demo-dr
+  namespace: default
+  labels:
+    app.kubernetes.io/managed-by: platform
+spec:
+  host: nginx-demo-stable
+  trafficPolicy:
+    tls:
+      mode: ISTIO_MUTUAL

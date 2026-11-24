@@ -1,0 +1,35 @@
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: nginx-demo-stable
+  namespace: default
+  labels:
+    app: nginx-demo
+spec:
+  type: ClusterIP
+  selector:
+    app: nginx-demo
+  ports:
+    - name: http
+      port: 80
+      targetPort: 80
+      protocol: TCP
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: nginx-demo-canary
+  namespace: default
+  labels:
+    app: nginx-demo
+spec:
+  type: ClusterIP
+  selector:
+    app: nginx-demo
+  ports:
+    - name: http
+      port: 80
+      targetPort: 80
+      protocol: TCP

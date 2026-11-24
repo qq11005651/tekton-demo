@@ -1,0 +1,48 @@
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Rollout
+metadata:
+  name: nginx-demo
+  namespace: default
+  labels:
+    app.kubernetes.io/managed-by: platform
+spec:
+  replicas: 3
+  revisionHistoryLimit: 5
+  selector:
+    matchLabels:
+      app: nginx-demo
+  template:
+    metadata:
+      labels:
+        app: nginx-demo
+    spec:
+      containers:
+        - name: nginx-demo
+          image: hub.podcc.com/test/nginx:1.15.2
+          ports:
+            - containerPort: 80
+  strategy:
+    canary:
+      maxUnavailable: 25%
+      maxSurge: 25%
+      steps:
+        - setWeight: 10
+        - pause:
+            duration: 1m
+        - setWeight: 50
+        - pause:
+            duration: 1m
+        - setWeight: 90
+        - pause:
+            duration: 1m
+      trafficRouting:
+        istio:
+          virtualService:
+            name: nginx-demo-vs
+            routes:
+              - primary
+          destinationRule:
+            name: nginx-demo-dr
+            canaryService: nginx-demo-canary
+            stableService: nginx-demo-stable

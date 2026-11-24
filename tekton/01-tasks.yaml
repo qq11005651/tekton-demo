@@ -1,0 +1,116 @@
+---
+apiVersion: tekton.dev/v1
+kind: Task
+metadata:
+  name: nginx-demo-git-clone
+  namespace: default
+spec:
+  params:
+    - name: url
+      type: string
+    - name: revision
+      type: string
+      default: main
+  workspaces:
+    - name: output
+  steps:
+    - name: clone
+      image: alpine/git:2.43.0
+      workingDir: $(workspaces.output.path)
+      script: |-
+        #!/usr/bin/env sh
+        set -eu
+        rm -rf ./* ./.[!.]* 2>/dev/null || true
+        git clone --depth 1 "$(params.url)" .
+        if [ "$(params.revision)" != "main" ] && [ "$(params.revision)" != "master" ]; then
+          git fetch --depth 1 origin "$(params.revision)"
+          git checkout FETCH_HEAD
+        fi
+
+---
+apiVersion: tekton.dev/v1
+kind: Task
+metadata:
+  name: nginx-demo-build-push
+  namespace: default
+spec:
+  params:
+    - name: image
+      type: string
+    - name: dockerfile
+      type: string
+      default: Dockerfile
+    - name: context
+      type: string
+      default: .
+    - name: registry-secret
+      type: string
+      default: registry-auth
+  workspaces:
+    - name: source
+  volumes:
+    - name: registry-auth
+      secret:
+        secretName: $(params.registry-secret)
+        optional: true
+  steps:
+    - name: build-and-push
+      image: gcr.io/kaniko-project/executor:v1.23.0-debug
+      workingDir: $(workspaces.source.path)
+      volumeMounts:
+        - name: registry-auth
+          mountPath: /kaniko/.docker
+          readOnly: true
+      args:
+        - '--dockerfile=$(params.dockerfile)'
+        - '--context=$(params.context)'
+        - '--destination=$(params.image)'
+        - '--cache=true'
+        - '--cache-repo=$(params.image)-cache'
+        - '--snapshot-mode=redo'
+        - '--skip-tls-verify'
+
+---
+apiVersion: tekton.dev/v1
+kind: Task
+metadata:
+  name: nginx-demo-update-manifest
+  namespace: default
+spec:
+  params:
+    - name: image
+      type: string
+    - name: revision
+      type: string
+      default: main
+    - name: rollout-file
+      type: string
+      default: k8s/rollout.yaml
+    - name: git-token
+      type: string
+      default: ''
+  workspaces:
+    - name: source
+  steps:
+    - name: bump-image
+      image: alpine/git:2.43.0
+      workingDir: $(workspaces.source.path)
+      script: |-
+        #!/usr/bin/env sh
+        set -eu
+        FILE="$(params.rollout-file)"
+        IMAGE="$(params.image)"
+        if [ ! -f "$FILE" ]; then echo "manifest not found: $FILE"; exit 1; fi
+        sed -i "s|^( *)image: .*|\1image: $IMAGE|g" "$FILE"
+        git config user.email "tekton-ci@platform.local"
+        git config user.name "Tekton CI"
+        git add "$FILE"
+        if git diff --cached --quiet; then echo "image unchanged, skip commit"; exit 0; fi
+        git commit -m "ci($(params.rollout-file)): bump image to $IMAGE [skip ci]"
+        TOKEN="$(params.git-token)"
+        if [ -n "$TOKEN" ]; then
+          git -c credential.helper="!f() { echo username=oauth2; echo password=$TOKEN; }; f" push origin "HEAD:$(params.revision)"
+        else
+          echo "no git-token provided, push with default credentials (cluster git config / anonymous)"
+          git push origin "HEAD:$(params.revision)"
+        fi

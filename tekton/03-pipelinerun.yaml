@@ -1,0 +1,40 @@
+---
+apiVersion: tekton.dev/v1
+kind: PipelineRun
+metadata:
+  name: nginx-demo-pipelinerun
+  namespace: default
+  labels:
+    app.kubernetes.io/managed-by: platform
+    release-app: nginx-demo
+spec:
+  pipelineRef:
+    name: nginx-demo-pipeline
+  taskRunTemplate:
+    serviceAccountName: pipeline
+  params:
+    - name: git-url
+      value: https://github.com/qq11005651/tekton-demo.git
+    - name: git-revision
+      value: master
+    - name: image
+      value: hub.podcc.com/test/nginx:1.15.2
+    - name: dockerfile
+      value: Dockerfile
+    - name: git-token
+      valueFrom:
+        secretKeyRef:
+          name: git-credentials
+          key: token
+          optional: true
+  workspaces:
+    - name: source
+      volumeClaimTemplate:
+        spec:
+          accessModes:
+            - ReadWriteOnce
+          resources:
+            requests:
+              storage: 5Gi
+  timeouts:
+    pipeline: 1h

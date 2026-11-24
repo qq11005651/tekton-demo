@@ -1,0 +1,76 @@
+---
+apiVersion: tekton.dev/v1
+kind: Pipeline
+metadata:
+  name: nginx-demo-pipeline
+  namespace: default
+  labels:
+    app.kubernetes.io/managed-by: platform
+    release-app: nginx-demo
+spec:
+  workspaces:
+    - name: source
+  params:
+    - name: git-url
+      type: string
+      default: https://github.com/qq11005651/tekton-demo.git
+    - name: git-revision
+      type: string
+      default: master
+    - name: image
+      type: string
+      default: hub.podcc.com/test/nginx:1.15.2
+    - name: dockerfile
+      type: string
+      default: Dockerfile
+    - name: auto-cd
+      type: string
+      default: 'true'
+    - name: git-token
+      type: string
+      default: ''
+  tasks:
+    - name: clone
+      taskRef:
+        name: nginx-demo-git-clone
+      workspaces:
+        - name: output
+          workspace: source
+      params:
+        - name: url
+          value: $(params.git-url)
+        - name: revision
+          value: $(params.git-revision)
+    - name: build-push
+      runAfter:
+        - clone
+      taskRef:
+        name: nginx-demo-build-push
+      workspaces:
+        - name: source
+          workspace: source
+      params:
+        - name: image
+          value: $(params.image)
+        - name: dockerfile
+          value: $(params.dockerfile)
+    - name: update-manifest
+      runAfter:
+        - build-push
+      when:
+        - input: $(params.auto-cd)
+          operator: in
+          values:
+            - 'true'
+      taskRef:
+        name: nginx-demo-update-manifest
+      workspaces:
+        - name: source
+          workspace: source
+      params:
+        - name: image
+          value: $(params.image)
+        - name: revision
+          value: $(params.git-revision)
+        - name: git-token
+          value: $(params.git-token)

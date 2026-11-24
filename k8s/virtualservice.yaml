@@ -1,0 +1,25 @@
+---
+apiVersion: networking.istio.io/v1beta1
+kind: VirtualService
+metadata:
+  name: nginx-demo-vs
+  namespace: default
+  labels:
+    app.kubernetes.io/managed-by: platform
+spec:
+  hosts:
+    - nginx-demo.demo.local
+  gateways:
+    - istio-system/nginx-demo-gateway
+  http:
+    - name: primary
+      route:
+        - destination:
+            host: nginx-demo-stable
+            port:
+              number: 80
+          weight: 100
+      timeout: 30s
+      retries:
+        attempts: 2
+        perTryTimeout: 10s
