@@ -1,0 +1,73 @@
+apiVersion: triggers.tekton.dev/v1beta1
+kind: TriggerBinding
+metadata:
+  name: nodejs-demo-binding
+  namespace: tekton-pipelines
+spec:
+  params:
+    - name: gitrevision
+      value: $(body.after)
+    - name: gitrepositoryurl
+      value: $(body.repository.clone_url)
+---
+apiVersion: triggers.tekton.dev/v1beta1
+kind: TriggerTemplate
+metadata:
+  name: nodejs-demo-trigger
+  namespace: tekton-pipelines
+spec:
+  params:
+    - name: gitrevision
+    - name: gitrepositoryurl
+  resourcetemplates:
+    - apiVersion: tekton.dev/v1
+      kind: PipelineRun
+      metadata:
+        generateName: nodejs-demo-ci-
+        namespace: tekton-pipelines
+      spec:
+        serviceAccountName: nodejs-ci-sa
+        pipelineRef:
+          name: nodejs-demo-ci
+        params:
+          - name: repo-url
+            value: $(tt.params.gitrepositoryurl)
+          - name: revision
+            value: $(tt.params.gitrevision)
+          - name: image
+            value: hub.podcc.com/test/nodejs-demo:$(tt.params.gitrevision)
+          - name: manifest-path
+            value: nodejs/gitops/overlays/srseo1369340781408857/kustomization.yaml
+        workspaces:
+          - name: shared
+            volumeClaimTemplate:
+              spec:
+                accessModes: ["ReadWriteOnce"]
+                resources:
+                  requests:
+                    storage: 2Gi
+---
+apiVersion: triggers.tekton.dev/v1beta1
+kind: EventListener
+metadata:
+  name: nodejs-demo-listener
+  namespace: tekton-pipelines
+spec:
+  serviceAccountName: tekton-triggers-sa
+  triggers:
+    - name: github-push
+      interceptors:
+        - ref:
+            name: github
+          params:
+            - name: eventTypes
+              value: ["push"]
+        - ref:
+            name: cel
+          params:
+            - name: filter
+              value: "body.ref == 'refs/heads/master' || body.ref.startsWith('refs/heads/release/')"
+      bindings:
+        - ref: nodejs-demo-binding
+      template:
+        ref: nodejs-demo-trigger

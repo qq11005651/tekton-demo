@@ -1,0 +1,150 @@
+apiVersion: tekton.dev/v1
+kind: Task
+metadata:
+  name: nodejs-demo-git-clone
+spec:
+  params:
+    - name: url
+    - name: revision
+      default: master
+  workspaces:
+    - name: source
+  steps:
+    - name: clone
+      image: alpine/git:2.45.2
+      workingDir: $(workspaces.source.path)
+      env:
+        - name: GIT_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: gitops-credentials
+              key: token
+      script: |
+        #!/bin/sh
+        set -eu
+        AUTH_URL=$(echo "$(params.url)" | sed -E "s#https://#https://x-access-token:$GIT_TOKEN@#")
+        git clone --branch "$(params.revision)" --depth 1 "$AUTH_URL" .
+---
+apiVersion: tekton.dev/v1
+kind: Task
+metadata:
+  name: nodejs-demo-npm-test
+spec:
+  workspaces:
+    - name: source
+  steps:
+    - name: lint-test
+      image: node:20-alpine
+      workingDir: $(workspaces.source.path)/app
+      script: |
+        #!/bin/sh
+        set -eu
+        npm install --no-audit --no-fund
+        npm run lint --if-present
+        npm test --if-present
+---
+apiVersion: tekton.dev/v1
+kind: Task
+metadata:
+  name: nodejs-demo-kaniko-build
+spec:
+  params:
+    - name: image
+    - name: context
+      default: app
+  workspaces:
+    - name: source
+  volumes:
+    - name: docker-config
+      secret:
+        secretName: registry-auth
+        items:
+          - key: config.json
+            path: config.json
+  steps:
+    - name: build-push
+      image: gcr.io/kaniko-project/executor:v1.23.1-debug
+      args:
+        - --context=$(workspaces.source.path)/$(params.context)
+        - --dockerfile=$(workspaces.source.path)/$(params.context)/Dockerfile
+        - --destination=$(params.image)
+        - --digest-file=$(workspaces.source.path)/digest
+        - --cache=true
+        - --cache-repo=hub.podcc.com/test/nodejs-demo-cache
+        - --snapshot-mode=redo
+      volumeMounts:
+        - name: docker-config
+          mountPath: /kaniko/.docker
+---
+apiVersion: tekton.dev/v1
+kind: Task
+metadata:
+  name: nodejs-demo-cosign-sign
+spec:
+  params:
+    - name: image
+  workspaces:
+    - name: source
+  volumes:
+    - name: cosign-keys
+      secret:
+        secretName: cosign-keys
+  steps:
+    - name: sign
+      image: gcr.io/projectsigstore/cosign:v2.2.4
+      env:
+        - name: COSIGN_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: cosign-keys
+              key: cosign.password
+      command: ["cosign"]
+      args:
+        - sign
+        - --yes
+        - --key
+        - /keys/cosign.key
+        - $(params.image)
+      volumeMounts:
+        - name: cosign-keys
+          mountPath: /keys
+          readOnly: true
+---
+apiVersion: tekton.dev/v1
+kind: Task
+metadata:
+  name: nodejs-demo-git-update
+spec:
+  params:
+    - name: gitUrl
+    - name: revision
+      default: master
+    - name: manifestPath
+    - name: imageName
+    - name: newTag
+  workspaces:
+    - name: source
+  steps:
+    - name: commit-push
+      image: alpine/git:2.45.2
+      workingDir: $(workspaces.source.path)
+      env:
+        - name: GIT_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: gitops-credentials
+              key: token
+      script: |
+        #!/bin/sh
+        set -eu
+        git config user.name  "tekton-bot"
+        git config user.email "tekton-bot@example.com"
+        AUTH_URL=$(echo "$(params.gitUrl)" | sed -E "s#https://#https://x-access-token:$GIT_TOKEN@#")
+        git remote set-url origin "$AUTH_URL"
+        sed -i -E "s#(newTag:[[:space:]]*).*#\1$(params.newTag)#" "$(params.manifestPath)"
+        git add "$(params.manifestPath)"
+        if git diff --cached --quiet; then
+          echo "manifest 无变化，跳过提交"; exit 0
+        fi
+        git commit -m "chore(gitops): bump $(params.imageName) -> $(params.newTag)"
+        git push origin HEAD:$(params.revision)

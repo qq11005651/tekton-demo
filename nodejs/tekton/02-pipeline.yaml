@@ -1,0 +1,70 @@
+apiVersion: tekton.dev/v1
+kind: Pipeline
+metadata:
+  name: nodejs-demo-ci
+spec:
+  params:
+    - name: repo-url
+    - name: revision
+      default: master
+    - name: image
+    - name: manifest-path
+  workspaces:
+    - name: shared
+  tasks:
+    - name: clone
+      taskRef:
+        name: nodejs-demo-git-clone
+      workspaces:
+        - name: source
+          workspace: shared
+      params:
+        - name: url
+          value: $(params.repo-url)
+        - name: revision
+          value: $(params.revision)
+    - name: test
+      runAfter: [clone]
+      taskRef:
+        name: nodejs-demo-npm-test
+      workspaces:
+        - name: source
+          workspace: shared
+    - name: build
+      runAfter: [test]
+      taskRef:
+        name: nodejs-demo-kaniko-build
+      workspaces:
+        - name: source
+          workspace: shared
+      params:
+        - name: image
+          value: $(params.image)
+    - name: sign
+      runAfter: [build]
+      taskRef:
+        name: nodejs-demo-cosign-sign
+      workspaces:
+        - name: source
+          workspace: shared
+      params:
+        - name: image
+          value: $(params.image)
+    - name: update-manifest
+      runAfter: [sign]
+      taskRef:
+        name: nodejs-demo-git-update
+      workspaces:
+        - name: source
+          workspace: shared
+      params:
+        - name: gitUrl
+          value: $(params.repo-url)
+        - name: revision
+          value: $(params.revision)
+        - name: manifestPath
+          value: $(params.manifest-path)
+        - name: imageName
+          value: hub.podcc.com/test/nodejs-demo
+        - name: newTag
+          value: $(params.revision)

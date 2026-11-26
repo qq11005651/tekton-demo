@@ -1,0 +1,9 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: srseo8162672730379150
+resources:
+  - ../../base
+  - ingress.yaml
+images:
+  - name: hub.podcc.com/test/nodejs-demo
+    newTag: v2.0.0

@@ -1,0 +1,37 @@
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: nodejs-demo
+  namespace: argocd
+spec:
+  goTemplate: true
+  generators:
+    - list:
+        elements:
+          - namespace: srseo1369340781408857
+            role: primary
+          - namespace: srseo8162672730379150
+            role: canary
+          - namespace: srseo2311761993048152
+            role: canary
+  template:
+    metadata:
+      name: '{{.namespace}}-nodejs-demo'
+      labels:
+        app.kubernetes.io/instance: nodejs-demo
+        release-role: '{{.role}}'
+    spec:
+      project: default
+      source:
+        repoURL: https://github.com/qq11005651/tekton-demo.git
+        targetRevision: master
+        path: 'nodejs/gitops/overlays/{{.namespace}}'
+      destination:
+        server: https://kubernetes.default.svc
+        namespace: '{{.namespace}}'
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+        syncOptions:
+          - CreateNamespace=true

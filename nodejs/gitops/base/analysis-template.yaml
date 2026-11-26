@@ -1,0 +1,20 @@
+apiVersion: argoproj.io/v1alpha1
+kind: AnalysisTemplate
+metadata:
+  name: success-rate
+spec:
+  args:
+    - name: service
+  metrics:
+    - name: success-rate
+      interval: 30s
+      count: 10
+      failureLimit: 2
+      successCondition: result[0] >= 0.99
+      provider:
+        prometheus:
+          address: http://prometheus.monitoring.svc:9090
+          query: |
+            sum(rate(http_requests_total{service="{{args.service}}",code!~"5.."}[1m]))
+            /
+            sum(rate(http_requests_total{service="{{args.service}}"}[1m]))

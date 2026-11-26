@@ -1,0 +1,19 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: nodejs-demo
+  labels:
+    release-role: primary
+spec:
+  ingressClassName: nginx
+  rules:
+    - host: nodejs-demo.demo.local
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: nodejs-demo-stable
+                port:
+                  number: 80
